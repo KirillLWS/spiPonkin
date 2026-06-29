@@ -1,0 +1,19 @@
+#ifndef MAX31856_CONSTANTS_H
+#define MAX31856_CONSTANTS_H
+
+// MCU Defines
+
+// Constants
+#define MAX31856_SPI        SPI1
+#define MAX31856_CS_GPIO    GPIOA
+#define MAX31856_CS_PIN     LL_GPIO_PIN_4
+
+// Low-level SPI access provided by the project (see MCU/spi.c).
+// The bus must be configured as SPI mode 1 (CPOL = 0, CPHA = 1), MSB first,
+// 8-bit data. MAX31856_CS_PIN must be a GPIO push-pull output (NSS soft).
+#define SPI_RX              SPI_ReceiveData(MAX31856_SPI)
+#define SPI_TX(data)        SPI_SendData(MAX31856_SPI, data)
+#define MAX31856_CS_LOW     LL_GPIO_ResetOutputPin(MAX31856_CS_GPIO, MAX31856_CS_PIN);
+#define MAX31856_CS_HIGH    LL_GPIO_SetOutputPin(MAX31856_CS_GPIO, MAX31856_CS_PIN);
+
+#endif
