@@ -1,0 +1,28 @@
+#ifndef GAS_O2_H2O_CONSTANTS_H
+#define GAS_O2_H2O_CONSTANTS_H
+
+// Individual graduation data. Part of these values is entered manually
+// according to the results of the individual calibration of each unit.
+
+// --- O2 solid-electrolyte cell ---------------------------------------------
+// Cx[%] = GAS_O2_C_REF * exp(-GAS_O2_NERNST_K * (Ex - Et))
+#define GAS_O2_C_REF      20.7f       // reference O2 volume fraction, %
+#define GAS_O2_NERNST_K   51.17975f   // 4F/(R*T) at T = 907.15 K (634 degC), 1/V
+#define GAS_O2_ET         0.0f        // thermo-EMF Et correction, V (from calibration)
+
+// --- H2O coulometric sensor ------------------------------------------------
+// C_H2O[ppmV] = GAS_H2O_K * (Ux - Uf) / Q
+#define GAS_H2O_K         747.928f    // ppmV * (cm^3/min) / V
+#define GAS_H2O_UF        0.0f        // background-current voltage Uf, V (from calibration)
+#define GAS_H2O_RESISTOR  100.0f      // sense resistor across which Ux is measured, Ohm
+
+// --- Flow rate Q = a + b*x + c*x^2 (x - flow-meter output signal) -----------
+#define GAS_FLOW_O2_A     0.415392f
+#define GAS_FLOW_O2_B     13766.5f
+#define GAS_FLOW_O2_C     35416.67f
+
+#define GAS_FLOW_H2O_A    0.9615185f
+#define GAS_FLOW_H2O_B    12611.44f
+#define GAS_FLOW_H2O_C    37579.19f
+
+#endif
