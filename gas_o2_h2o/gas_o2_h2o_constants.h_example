@@ -5,9 +5,13 @@
 // according to the results of the individual calibration of each unit.
 
 // --- O2 solid-electrolyte cell ---------------------------------------------
-// Cx[%] = GAS_O2_C_REF * exp(-GAS_O2_NERNST_K * (Ex - Et))
+// Cx[%] = GAS_O2_C_REF * exp(-k(T) * (Ex - Et)),  k(T) = 4F/(R*T)
+// The zirconia cell runs hot, so the Nernst slope k depends on the actual
+// cell temperature T, which is measured by the thermocouple (MAX31856).
+// k is scaled from its nominal value: k(T) = GAS_O2_NERNST_K * GAS_O2_T_NOM / T.
 #define GAS_O2_C_REF      20.7f       // reference O2 volume fraction, %
-#define GAS_O2_NERNST_K   51.17975f   // 4F/(R*T) at T = 907.15 K (634 degC), 1/V
+#define GAS_O2_NERNST_K   51.17975f   // nominal 4F/(R*T) at T = GAS_O2_T_NOM, 1/V
+#define GAS_O2_T_NOM      907.15f     // nominal cell temperature, K (634 degC)
 #define GAS_O2_ET         0.0f        // thermo-EMF Et correction, V (from calibration)
 
 // --- H2O coulometric sensor ------------------------------------------------
