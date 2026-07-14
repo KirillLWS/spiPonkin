@@ -1,0 +1,15 @@
+#ifndef AHT20_BMP280_CONSTANTS_H
+#define AHT20_BMP280_CONSTANTS_H
+
+#include "stm32h7xx_ll_utils.h"  // LL_mDelay
+
+// Constants
+#define AHT_BMP_I2C     I2C1     // I2C peripheral shared by both chips
+#define AHT20_ADDR      0x38U    // AHT20 fixed 7-bit address
+#define BMP280_ADDR     0x76U    // BMP280 address (0x77 if SDO is tied high)
+
+// Millisecond delay used while waiting for conversions. LL_mDelay needs a
+// running 1 ms SysTick (SystemCoreClock must be up to date).
+#define AHT_BMP_DELAY_MS(ms)   LL_mDelay(ms)
+
+#endif
