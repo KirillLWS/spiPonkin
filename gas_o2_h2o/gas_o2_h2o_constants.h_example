@@ -29,4 +29,14 @@
 #define GAS_FLOW_H2O_B    12611.44f
 #define GAS_FLOW_H2O_C    37579.19f
 
+// --- Validity limits for the *_checked functions ----------------------------
+// Tune per unit. Out-of-range inputs make exp()/division produce plausible
+// looking garbage, so checked variants reject them instead.
+#define GAS_O2_EX_MIN     (-0.2f)     // valid cell EMF range, V
+#define GAS_O2_EX_MAX     0.5f
+#define GAS_O2_T_MIN      773.15f     // cell working temperature range, K (500 degC)
+#define GAS_O2_T_MAX      1073.15f    // (800 degC)
+#define GAS_H2O_UX_MAX    10.0f       // max plausible sense voltage, V
+#define GAS_FLOW_Q_MIN    0.001f      // min plausible flow, cm^3/min
+
 #endif

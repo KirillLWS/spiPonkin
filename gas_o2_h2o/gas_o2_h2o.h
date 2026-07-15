@@ -40,4 +40,15 @@ float GAS_o2_ppm(float ex, float et);
 float GAS_h2o_ppm(float ux, float q);
 float GAS_h2o_ppm_corrected(float ux, float uf, float q);
 
+/* Checked variants: validate the inputs against the GAS_*_MIN/MAX limits
+   from the constants header before computing. On GAS_ERR_RANGE the output
+   is left untouched, so a stale-but-valid value is not overwritten. */
+typedef enum {
+    GAS_OK        = 0,
+    GAS_ERR_RANGE = 1
+} GAS_Status;
+
+GAS_Status GAS_o2_percent_checked(float ex, float et, float t_kelvin, float* out);
+GAS_Status GAS_h2o_ppm_checked(float ux, float uf, float q, float* out);
+
 #endif

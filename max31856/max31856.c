@@ -1,6 +1,22 @@
 #include "max31856.h"
 
-#define SPI_RXTX(data) SPI_TX(data); SPI_RX;
+#define SPI_RXTX(data) do { SPI_TX(data); (void)SPI_RX; } while (0)
+
+#define MAX31856_PROBE_PATTERN  0x15U  // scratch value for the probe readback
+
+static int32_t clamp_i32(int32_t value, int32_t low, int32_t high) {
+    int32_t result = value;
+
+    if (value < low) {
+        result = low;
+    } else if (value > high) {
+        result = high;
+    } else {
+        /* in range */
+    }
+
+    return result;
+}
 
 void MAX31856_write_reg(uint8_t addr, uint8_t value) {
     MAX31856_CS_LOW;
@@ -53,17 +69,59 @@ void MAX31856_init(uint8_t tc_type, uint8_t avg) {
     MAX31856_write_reg(MAX31856_REG_MASK, 0x00U);
 }
 
+MAX31856_Status MAX31856_probe(void) {
+    MAX31856_Status st = MAX31856_ERR;
+    uint8_t saved = MAX31856_read_reg(MAX31856_REG_MASK);
+
+    MAX31856_write_reg(MAX31856_REG_MASK, MAX31856_PROBE_PATTERN);
+    if (MAX31856_read_reg(MAX31856_REG_MASK) == MAX31856_PROBE_PATTERN) {
+        st = MAX31856_OK;
+    }
+    MAX31856_write_reg(MAX31856_REG_MASK, saved);
+
+    return st;
+}
+
 void MAX31856_set_filter(uint8_t use_50hz) {
     uint8_t cr0 = MAX31856_read_reg(MAX31856_REG_CR0);
+    uint8_t cmode = cr0 & MAX31856_CR0_CMODE;
 
-    /* The filter must only be changed while no conversion is running. */
+    /* The datasheet requires conversions to be stopped while the 50/60 Hz
+       filter is changed, so automatic mode is suspended and restored. */
+    cr0 &= (uint8_t)(~MAX31856_CR0_CMODE);
     if (use_50hz != 0U) {
         cr0 |= MAX31856_CR0_50HZ;
     } else {
         cr0 &= (uint8_t)(~MAX31856_CR0_50HZ);
     }
-
     MAX31856_write_reg(MAX31856_REG_CR0, cr0);
+
+    if (cmode != 0U) {
+        MAX31856_write_reg(MAX31856_REG_CR0, (uint8_t)(cr0 | MAX31856_CR0_CMODE));
+    }
+}
+
+void MAX31856_set_tc_limits(float low_c, float high_c) {
+    int32_t high = clamp_i32((int32_t)(high_c / MAX31856_TCTH_LSB), -32768, 32767);
+    int32_t low = clamp_i32((int32_t)(low_c / MAX31856_TCTH_LSB), -32768, 32767);
+    uint32_t uhigh = (uint32_t)high & 0xFFFFU;
+    uint32_t ulow = (uint32_t)low & 0xFFFFU;
+
+    MAX31856_write_reg(MAX31856_REG_LTHFTH, (uint8_t)(uhigh >> 8));
+    MAX31856_write_reg(MAX31856_REG_LTHFTL, (uint8_t)(uhigh & 0xFFU));
+    MAX31856_write_reg(MAX31856_REG_LTLFTH, (uint8_t)(ulow >> 8));
+    MAX31856_write_reg(MAX31856_REG_LTLFTL, (uint8_t)(ulow & 0xFFU));
+}
+
+void MAX31856_set_cj_limits(int8_t low_c, int8_t high_c) {
+    MAX31856_write_reg(MAX31856_REG_CJHF, (uint8_t)high_c);
+    MAX31856_write_reg(MAX31856_REG_CJLF, (uint8_t)low_c);
+}
+
+void MAX31856_set_cj_offset(float offset_c) {
+    int32_t code = clamp_i32((int32_t)(offset_c / MAX31856_CJTO_LSB), -128, 127);
+
+    MAX31856_write_reg(MAX31856_REG_CJTO, (uint8_t)((uint32_t)code & 0xFFU));
 }
 
 void MAX31856_oneshot(void) {
@@ -73,6 +131,13 @@ void MAX31856_oneshot(void) {
     cr0 |= MAX31856_CR0_1SHOT;              // trigger a single conversion
 
     MAX31856_write_reg(MAX31856_REG_CR0, cr0);
+}
+
+uint8_t MAX31856_conversion_done(void) {
+    uint8_t cr0 = MAX31856_read_reg(MAX31856_REG_CR0);
+
+    /* 1SHOT self-clears when the triggered conversion completes. */
+    return ((cr0 & MAX31856_CR0_1SHOT) == 0U) ? 1U : 0U;
 }
 
 void MAX31856_clear_fault(void) {

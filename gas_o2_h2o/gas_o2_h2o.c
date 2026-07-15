@@ -1,6 +1,7 @@
 #include "gas_o2_h2o.h"
 
 #include "math.h"
+#include "stddef.h"
 
 float GAS_flow(float a, float b, float c, float x) {
     return a + (b * x) + (c * x * x);
@@ -60,4 +61,32 @@ float GAS_h2o_ppm_corrected(float ux, float uf, float q) {
 
 float GAS_h2o_ppm(float ux, float q) {
     return GAS_h2o_ppm_corrected(ux, GAS_H2O_UF, q);
+}
+
+GAS_Status GAS_o2_percent_checked(float ex, float et, float t_kelvin, float* out) {
+    GAS_Status st = GAS_ERR_RANGE;
+    float de = ex - et;
+
+    if ((out != NULL) &&
+        (de >= GAS_O2_EX_MIN) && (de <= GAS_O2_EX_MAX) &&
+        (t_kelvin >= GAS_O2_T_MIN) && (t_kelvin <= GAS_O2_T_MAX)) {
+        *out = GAS_o2_percent_at(ex, et, t_kelvin);
+        st = GAS_OK;
+    }
+
+    return st;
+}
+
+GAS_Status GAS_h2o_ppm_checked(float ux, float uf, float q, float* out) {
+    GAS_Status st = GAS_ERR_RANGE;
+    float du = ux - uf;
+
+    if ((out != NULL) &&
+        (du >= 0.0f) && (ux <= GAS_H2O_UX_MAX) &&
+        (q >= GAS_FLOW_Q_MIN)) {
+        *out = GAS_h2o_ppm_corrected(ux, uf, q);
+        st = GAS_OK;
+    }
+
+    return st;
 }

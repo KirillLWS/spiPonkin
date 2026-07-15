@@ -1,7 +1,17 @@
 #include "i2c.h"
 
-/* Bounded spin count so a stuck bus cannot hang the firmware forever. */
+#include "gpio.h"
+
+/* Bounded spin count so a stuck bus cannot hang the firmware forever.
+   Iteration-based, not time-based: revisit when the core clock changes. */
+#ifndef I2C_TIMEOUT
 #define I2C_TIMEOUT  100000U
+#endif
+
+/* Half-period spin for the bus-recovery bit-bang clock (~10-100 kHz). */
+#ifndef I2C_RECOVER_DELAY
+#define I2C_RECOVER_DELAY  2000U
+#endif
 
 static I2C_Status i2c_wait_txis(I2C_TypeDef* i2c) {
     I2C_Status st = I2C_ERR_TIMEOUT;
@@ -151,6 +161,48 @@ I2C_Status I2C_WriteRead(I2C_TypeDef* i2c, uint8_t addr,
             st = i2c_wait_flag(i2c, 0U);
         }
         LL_I2C_ClearFlag_STOP(i2c);
+    }
+
+    return st;
+}
+
+static void i2c_recover_delay(void) {
+    volatile uint32_t d;
+
+    for (d = 0U; d < I2C_RECOVER_DELAY; d++) {
+    }
+}
+
+I2C_Status I2C_BusRecover(GPIO_TypeDef* scl_port, uint32_t scl_pin,
+                          GPIO_TypeDef* sda_port, uint32_t sda_pin) {
+    I2C_Status st = I2C_ERR_TIMEOUT;
+    uint32_t i;
+
+    /* Take both lines as open-drain GPIO, released (high). */
+    GPIO_Config(scl_port, scl_pin, LL_GPIO_MODE_OUTPUT, LL_GPIO_OUTPUT_OPENDRAIN,
+                LL_GPIO_PULL_UP, LL_GPIO_SPEED_FREQ_LOW, LL_GPIO_AF_0);
+    GPIO_Config(sda_port, sda_pin, LL_GPIO_MODE_OUTPUT, LL_GPIO_OUTPUT_OPENDRAIN,
+                LL_GPIO_PULL_UP, LL_GPIO_SPEED_FREQ_LOW, LL_GPIO_AF_0);
+    LL_GPIO_SetOutputPin(scl_port, scl_pin);
+    LL_GPIO_SetOutputPin(sda_port, sda_pin);
+    i2c_recover_delay();
+
+    /* Clock SCL until the stuck slave finishes its byte and releases SDA
+       (9 pulses cover a full byte plus the ACK bit). */
+    for (i = 0U; (i < 9U) && (LL_GPIO_IsInputPinSet(sda_port, sda_pin) == 0U); i++) {
+        LL_GPIO_ResetOutputPin(scl_port, scl_pin);
+        i2c_recover_delay();
+        LL_GPIO_SetOutputPin(scl_port, scl_pin);
+        i2c_recover_delay();
+    }
+
+    if (LL_GPIO_IsInputPinSet(sda_port, sda_pin) != 0U) {
+        /* STOP condition: SDA low -> high while SCL stays high. */
+        LL_GPIO_ResetOutputPin(sda_port, sda_pin);
+        i2c_recover_delay();
+        LL_GPIO_SetOutputPin(sda_port, sda_pin);
+        i2c_recover_delay();
+        st = I2C_OK;
     }
 
     return st;

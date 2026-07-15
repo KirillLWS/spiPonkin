@@ -71,28 +71,41 @@ I2C_Status AHT20_init(void) {
     return st;
 }
 
-I2C_Status AHT20_read(float* temperature, float* humidity) {
-    I2C_Status st;
+I2C_Status AHT20_trigger(void) {
     uint8_t cmd[3];
-    uint8_t data[7];
-    uint32_t raw;
 
     cmd[0] = AHT20_CMD_MEASURE;
     cmd[1] = 0x33U;
     cmd[2] = 0x00U;
 
-    st = I2C_Write(AHT_BMP_I2C, AHT20_ADDR, cmd, 3U);
+    return I2C_Write(AHT_BMP_I2C, AHT20_ADDR, cmd, 3U);
+}
 
-    if (st == I2C_OK) {
-        AHT_BMP_DELAY_MS(80U);  // measurement time
-        st = I2C_Read(AHT_BMP_I2C, AHT20_ADDR, data, 7U);
+I2C_Status AHT20_busy(uint8_t* busy) {
+    I2C_Status st;
+    uint8_t status = 0U;
+
+    st = I2C_Read(AHT_BMP_I2C, AHT20_ADDR, &status, 1U);
+
+    if ((st == I2C_OK) && (busy != NULL)) {
+        *busy = ((status & AHT20_STATUS_BUSY) != 0U) ? 1U : 0U;
     }
+
+    return st;
+}
+
+I2C_Status AHT20_fetch(float* temperature, float* humidity) {
+    I2C_Status st;
+    uint8_t data[7];
+    uint32_t raw;
+
+    st = I2C_Read(AHT_BMP_I2C, AHT20_ADDR, data, 7U);
 
     if (st == I2C_OK) {
         if ((data[0] & AHT20_STATUS_BUSY) != 0U) {
-            st = I2C_ERR_TIMEOUT;  // still converting
+            st = I2C_ERR_TIMEOUT;  // conversion still running, retry later
         } else if (aht20_crc8(data, 6U) != data[6]) {
-            st = I2C_ERR_NACK;     // corrupted frame
+            st = I2C_ERR_DATA;     // corrupted frame
         } else {
             if (humidity != NULL) {
                 raw = ((uint32_t)data[1] << 12) |
@@ -106,6 +119,26 @@ I2C_Status AHT20_read(float* temperature, float* humidity) {
                       (uint32_t)data[5];
                 *temperature = (((float)raw * 200.0f) / 1048576.0f) - 50.0f;
             }
+        }
+    }
+
+    return st;
+}
+
+I2C_Status AHT20_read(float* temperature, float* humidity) {
+    I2C_Status st;
+    uint32_t retry;
+
+    st = AHT20_trigger();
+
+    if (st == I2C_OK) {
+        AHT_BMP_DELAY_MS(80U);  // typical measurement time
+        st = AHT20_fetch(temperature, humidity);
+
+        /* If the chip is still converting, give it a little more time. */
+        for (retry = 0U; (retry < 3U) && (st == I2C_ERR_TIMEOUT); retry++) {
+            AHT_BMP_DELAY_MS(10U);
+            st = AHT20_fetch(temperature, humidity);
         }
     }
 
@@ -228,6 +261,14 @@ I2C_Status BMP280_read(float* temperature, float* pressure) {
                           ((uint32_t)data[4] << 4) |
                           ((uint32_t)data[5] >> 4));
 
+        /* 0x80000 marks a skipped measurement (channel off / not started) -
+           without this check it compensates into plausible-looking garbage. */
+        if ((adc_t == 0x80000) || (adc_p == 0x80000)) {
+            st = I2C_ERR_DATA;
+        }
+    }
+
+    if (st == I2C_OK) {
         /* temperature must be compensated first: it sets t_fine for pressure */
         {
             int32_t t = bmp280_compensate_t(adc_t);

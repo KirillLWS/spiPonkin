@@ -8,8 +8,11 @@
 #define AHT20_ADDR      0x38U    // AHT20 fixed 7-bit address
 #define BMP280_ADDR     0x76U    // BMP280 address (0x77 if SDO is tied high)
 
-// Millisecond delay used while waiting for conversions. LL_mDelay needs a
-// running 1 ms SysTick (SystemCoreClock must be up to date).
+// Millisecond delay used by the BLOCKING functions while waiting for
+// conversions. Bare-metal: LL_mDelay needs a running 1 ms SysTick.
+// Under FreeRTOS remap it so a waiting task yields instead of spinning:
+//   #define AHT_BMP_DELAY_MS(ms)   vTaskDelay(pdMS_TO_TICKS(ms))
+// The non-blocking trigger/busy/fetch functions never call this macro.
 #define AHT_BMP_DELAY_MS(ms)   LL_mDelay(ms)
 
 #endif

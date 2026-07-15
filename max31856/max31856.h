@@ -70,21 +70,44 @@
 #define MAX31856_FAULT_OPEN     0x01U  // open-circuit (broken thermocouple)
 
 /* Resolution of the temperature registers, degC per LSB */
-#define MAX31856_TC_LSB   0.0078125f  // linearized thermocouple, 2^-7 degC
-#define MAX31856_CJ_LSB   0.015625f   // cold-junction, 2^-6 degC
+#define MAX31856_TC_LSB    0.0078125f  // linearized thermocouple reading, 2^-7 degC
+#define MAX31856_CJ_LSB    0.015625f   // cold-junction reading, 2^-6 degC
+#define MAX31856_TCTH_LSB  0.0625f     // TC fault thresholds LTxFTx, 2^-4 degC
+#define MAX31856_CJTO_LSB  0.0625f     // cold-junction offset CJTO, 2^-4 degC
+/* CJHF/CJLF cold-junction thresholds are signed 8-bit with 1 degC per LSB. */
+
+typedef enum {
+    MAX31856_OK   = 0,
+    MAX31856_ERR  = 1   // no or wrong SPI response (chip missing, bad wiring/mode)
+} MAX31856_Status;
 
 /* Register access */
 void MAX31856_write_reg(uint8_t addr, uint8_t value);
 uint8_t MAX31856_read_reg(uint8_t addr);
 void MAX31856_read_buf(uint8_t addr, uint8_t* buf, uint32_t len);
 
+/* Presence check: write-readback of a scratch pattern (MASK register is
+   saved and restored). Call after bus init to verify the chip answers. */
+MAX31856_Status MAX31856_probe(void);
+
 /* Configuration */
 void MAX31856_init(uint8_t tc_type, uint8_t avg);
 void MAX31856_set_filter(uint8_t use_50hz);
-void MAX31856_oneshot(void);
 void MAX31856_clear_fault(void);
 
-/* Status and measurement */
+/* Fault thresholds and cold-junction offset (SR bits xxHIGH/xxLOW report
+   crossings). Values are clamped to the register ranges. */
+void MAX31856_set_tc_limits(float low_c, float high_c);   // LSB 0.0625 degC
+void MAX31856_set_cj_limits(int8_t low_c, int8_t high_c); // LSB 1 degC
+void MAX31856_set_cj_offset(float offset_c);              // LSB 0.0625 degC
+
+/* One-shot flow (non-blocking, interrupt/state-machine friendly):
+   MAX31856_oneshot() triggers, MAX31856_conversion_done() polls the
+   self-clearing 1SHOT bit (~150-200 ms typical conversion). */
+void MAX31856_oneshot(void);
+uint8_t MAX31856_conversion_done(void);
+
+/* Status and measurement (no waits inside, safe to call periodically) */
 uint8_t MAX31856_read_fault(void);
 int32_t MAX31856_read_temp_raw(void);
 int32_t MAX31856_read_cj_temp_raw(void);
