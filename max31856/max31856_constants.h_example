@@ -8,9 +8,12 @@
 #define MAX31856_CS_GPIO    GPIOA
 #define MAX31856_CS_PIN     LL_GPIO_PIN_4
 
-// Low-level SPI access provided by the project (see MCU/spi.c).
+// Low-level SPI access: either the project layer (MCU/spi.c) or the spi/
+// module of this repo - same signatures, but spi/ adds bounded timeouts
+// (a dead bus fails MAX31856_probe instead of hanging the firmware).
 // The bus must be configured as SPI mode 1 (CPOL = 0, CPHA = 1), MSB first,
 // 8-bit data. MAX31856_CS_PIN must be a GPIO push-pull output (NSS soft).
+// On STM32H7 call SPI_MasterStart() once after the bus init (CSTART).
 #define SPI_RX              SPI_ReceiveData(MAX31856_SPI)
 #define SPI_TX(data)        SPI_SendData(MAX31856_SPI, data)
 #define MAX31856_CS_LOW     LL_GPIO_ResetOutputPin(MAX31856_CS_GPIO, MAX31856_CS_PIN);

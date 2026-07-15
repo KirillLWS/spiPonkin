@@ -71,6 +71,16 @@ I2C_Status AHT20_init(void) {
     return st;
 }
 
+I2C_Status AHT20_soft_reset(void) {
+    uint8_t cmd = AHT20_CMD_RESET;
+    I2C_Status st;
+
+    st = I2C_Write(AHT_BMP_I2C, AHT20_ADDR, &cmd, 1U);
+    AHT_BMP_DELAY_MS(20U);  // datasheet: reset completes within 20 ms
+
+    return st;
+}
+
 I2C_Status AHT20_trigger(void) {
     uint8_t cmd[3];
 

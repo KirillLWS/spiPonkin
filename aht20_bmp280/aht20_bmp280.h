@@ -10,6 +10,7 @@
 #define AHT20_CMD_STATUS    0x71U  // read status byte
 #define AHT20_CMD_INIT      0xBEU  // initialize / calibrate
 #define AHT20_CMD_MEASURE   0xACU  // trigger measurement
+#define AHT20_CMD_RESET     0xBAU  // soft reset
 #define AHT20_STATUS_BUSY   0x80U  // status: measurement in progress
 #define AHT20_STATUS_CAL    0x08U  // status: sensor calibrated
 
@@ -37,6 +38,11 @@
 
 /* AHT20: power-up, check calibration, calibrate if needed. */
 I2C_Status AHT20_init(void);
+
+/* AHT20: soft reset without power cycling (recovers a hung sensor).
+   Blocking: waits the 20 ms restart time, then the sensor needs
+   AHT20_init() again. */
+I2C_Status AHT20_soft_reset(void);
 
 /* AHT20 non-blocking: start a measurement (takes ~80 ms in the chip). */
 I2C_Status AHT20_trigger(void);
