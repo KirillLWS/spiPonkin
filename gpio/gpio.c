@@ -1,7 +1,45 @@
+/**
+ * @file    gpio.c
+ * @brief   Universal GPIO pin configuration implementation.
+ * @details See gpio.h for the public API description.
+ */
+
+/*==============================================================================
+ *                              INCLUDED FILES
+ *============================================================================*/
+
 #include "gpio.h"
 
 #include "stm32h7xx_ll_bus.h"
 
+/*==============================================================================
+ *                            MACRO DEFINITIONS
+ *============================================================================*/
+
+/* No private macros. */
+
+/*==============================================================================
+ *                               DATA TYPES
+ *============================================================================*/
+
+/* No private data types. */
+
+/*==============================================================================
+ *                                VARIABLES
+ *============================================================================*/
+
+/* The module keeps no state. */
+
+/*==============================================================================
+ *                                FUNCTIONS
+ *============================================================================*/
+
+/**
+ * @brief   Enable the AHB4 clock of the given GPIO port.
+ * @details Resolved by comparing the port pointer; unknown ports are ignored.
+ * @param[in] port GPIO port (GPIOA..GPIOK).
+ * @return  None.
+ */
 static void gpio_enable_clock(const GPIO_TypeDef* port) {
 #if defined(GPIOA)
     if (port == GPIOA) {
@@ -66,7 +104,7 @@ static void gpio_enable_clock(const GPIO_TypeDef* port) {
 void GPIO_Config(GPIO_TypeDef* port, uint32_t pins, uint32_t mode,
                  uint32_t output_type, uint32_t pull, uint32_t speed,
                  uint32_t alternate) {
-    LL_GPIO_InitTypeDef init;
+    LL_GPIO_InitTypeDef init = {0U, 0U, 0U, 0U, 0U, 0U};  /* filled below */
 
     gpio_enable_clock(port);
 

@@ -1,18 +1,53 @@
+/**
+ * @file    i2c.c
+ * @brief   Blocking I2C master transport implementation.
+ * @details See i2c.h for the public API description.
+ */
+
+/*==============================================================================
+ *                              INCLUDED FILES
+ *============================================================================*/
+
 #include "i2c.h"
 
 #include "gpio.h"
 
-/* Bounded spin count so a stuck bus cannot hang the firmware forever.
-   Iteration-based, not time-based: revisit when the core clock changes. */
+/*==============================================================================
+ *                            MACRO DEFINITIONS
+ *============================================================================*/
+
 #ifndef I2C_TIMEOUT
+/** Bounded spin count so a stuck bus cannot hang the firmware forever.
+ *  Iteration-based, not time-based: revisit when the core clock changes. */
 #define I2C_TIMEOUT  100000U
 #endif
 
-/* Half-period spin for the bus-recovery bit-bang clock (~10-100 kHz). */
 #ifndef I2C_RECOVER_DELAY
+/** Half-period spin for the bus-recovery bit-bang clock (~10-100 kHz). */
 #define I2C_RECOVER_DELAY  2000U
 #endif
 
+/*==============================================================================
+ *                               DATA TYPES
+ *============================================================================*/
+
+/* No private data types. */
+
+/*==============================================================================
+ *                                VARIABLES
+ *============================================================================*/
+
+/* The transport keeps no state between transactions. */
+
+/*==============================================================================
+ *                                FUNCTIONS
+ *============================================================================*/
+
+/**
+ * @brief   Wait for TX-ready (TXIS) with NACK detection.
+ * @param[in,out] i2c I2C peripheral instance.
+ * @return  I2C_OK, I2C_ERR_NACK or I2C_ERR_TIMEOUT.
+ */
 static I2C_Status i2c_wait_txis(I2C_TypeDef* i2c) {
     I2C_Status st = I2C_ERR_TIMEOUT;
     uint32_t t = I2C_TIMEOUT;
@@ -33,6 +68,11 @@ static I2C_Status i2c_wait_txis(I2C_TypeDef* i2c) {
     return st;
 }
 
+/**
+ * @brief   Wait for RX-data (RXNE) with NACK detection.
+ * @param[in,out] i2c I2C peripheral instance.
+ * @return  I2C_OK, I2C_ERR_NACK or I2C_ERR_TIMEOUT.
+ */
 static I2C_Status i2c_wait_rxne(I2C_TypeDef* i2c) {
     I2C_Status st = I2C_ERR_TIMEOUT;
     uint32_t t = I2C_TIMEOUT;
@@ -53,10 +93,16 @@ static I2C_Status i2c_wait_rxne(I2C_TypeDef* i2c) {
     return st;
 }
 
+/**
+ * @brief   Wait for transfer complete (TC) or STOP with NACK detection.
+ * @param[in,out] i2c   I2C peripheral instance.
+ * @param[in]     is_tc Non-zero waits for TC (SOFTEND phase), zero for STOP.
+ * @return  I2C_OK, I2C_ERR_NACK or I2C_ERR_TIMEOUT.
+ */
 static I2C_Status i2c_wait_flag(I2C_TypeDef* i2c, uint32_t is_tc) {
     I2C_Status st = I2C_ERR_TIMEOUT;
     uint32_t t = I2C_TIMEOUT;
-    uint32_t done;
+    uint32_t done = 0U;
 
     while (t != 0U) {
         if (is_tc != 0U) {
@@ -80,9 +126,20 @@ static I2C_Status i2c_wait_flag(I2C_TypeDef* i2c, uint32_t is_tc) {
     return st;
 }
 
+/**
+ * @brief   Crude half-period delay for the bus-recovery bit-bang clock.
+ * @return  None.
+ */
+static void i2c_recover_delay(void) {
+    volatile uint32_t d = 0U;
+
+    for (d = 0U; d < I2C_RECOVER_DELAY; d++) {
+    }
+}
+
 I2C_Status I2C_Write(I2C_TypeDef* i2c, uint8_t addr, const uint8_t* data, uint32_t len) {
     I2C_Status st = I2C_OK;
-    uint32_t i;
+    uint32_t i = 0U;
 
     LL_I2C_HandleTransfer(i2c, (uint32_t)addr << 1, LL_I2C_ADDRSLAVE_7BIT, len,
                           LL_I2C_MODE_AUTOEND, LL_I2C_GENERATION_START_WRITE);
@@ -104,7 +161,7 @@ I2C_Status I2C_Write(I2C_TypeDef* i2c, uint8_t addr, const uint8_t* data, uint32
 
 I2C_Status I2C_Read(I2C_TypeDef* i2c, uint8_t addr, uint8_t* data, uint32_t len) {
     I2C_Status st = I2C_OK;
-    uint32_t i;
+    uint32_t i = 0U;
 
     LL_I2C_HandleTransfer(i2c, (uint32_t)addr << 1, LL_I2C_ADDRSLAVE_7BIT, len,
                           LL_I2C_MODE_AUTOEND, LL_I2C_GENERATION_START_READ);
@@ -128,7 +185,7 @@ I2C_Status I2C_WriteRead(I2C_TypeDef* i2c, uint8_t addr,
                          const uint8_t* wdata, uint32_t wlen,
                          uint8_t* rdata, uint32_t rlen) {
     I2C_Status st = I2C_OK;
-    uint32_t i;
+    uint32_t i = 0U;
 
     /* Phase 1: write with SOFTEND so no STOP is generated, then repeated start. */
     LL_I2C_HandleTransfer(i2c, (uint32_t)addr << 1, LL_I2C_ADDRSLAVE_7BIT, wlen,
@@ -166,17 +223,10 @@ I2C_Status I2C_WriteRead(I2C_TypeDef* i2c, uint8_t addr,
     return st;
 }
 
-static void i2c_recover_delay(void) {
-    volatile uint32_t d;
-
-    for (d = 0U; d < I2C_RECOVER_DELAY; d++) {
-    }
-}
-
 I2C_Status I2C_BusRecover(GPIO_TypeDef* scl_port, uint32_t scl_pin,
                           GPIO_TypeDef* sda_port, uint32_t sda_pin) {
     I2C_Status st = I2C_ERR_TIMEOUT;
-    uint32_t i;
+    uint32_t i = 0U;
 
     /* Take both lines as open-drain GPIO, released (high). */
     GPIO_Config(scl_port, scl_pin, LL_GPIO_MODE_OUTPUT, LL_GPIO_OUTPUT_OPENDRAIN,

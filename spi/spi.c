@@ -1,12 +1,42 @@
+/**
+ * @file    spi.c
+ * @brief   Blocking SPI master transport implementation.
+ * @details See spi.h for the public API description.
+ */
+
+/*==============================================================================
+ *                              INCLUDED FILES
+ *============================================================================*/
+
 #include "spi.h"
 
-/* Bounded spin count so a dead peripheral cannot hang the firmware.
-   Iteration-based, not time-based: revisit when the core clock changes. */
+/*==============================================================================
+ *                            MACRO DEFINITIONS
+ *============================================================================*/
+
 #ifndef SPI_TIMEOUT
+/** Bounded spin count so a dead peripheral cannot hang the firmware.
+ *  Iteration-based, not time-based: revisit when the core clock changes. */
 #define SPI_TIMEOUT  100000U
 #endif
 
+/*==============================================================================
+ *                               DATA TYPES
+ *============================================================================*/
+
+/* No private data types. */
+
+/*==============================================================================
+ *                                VARIABLES
+ *============================================================================*/
+
+/** Sticky timeout flag: latched by any timed-out primitive,
+ *  cleared only by SPI_ClearError(). */
 static volatile SPI_Status spi_error = SPI_OK;
+
+/*==============================================================================
+ *                                FUNCTIONS
+ *============================================================================*/
 
 void SPI_MasterStart(SPI_TypeDef* spi) {
     if (LL_SPI_IsEnabled(spi) == 0U) {

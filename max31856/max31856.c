@@ -1,9 +1,48 @@
+/**
+ * @file    max31856.c
+ * @brief   MAX31856 thermocouple-to-digital converter driver implementation.
+ * @details See max31856.h for the public API description.
+ */
+
+/*==============================================================================
+ *                              INCLUDED FILES
+ *============================================================================*/
+
 #include "max31856.h"
 
+/*==============================================================================
+ *                            MACRO DEFINITIONS
+ *============================================================================*/
+
+/** Full-duplex byte exchange: transmit and discard the received byte. */
 #define SPI_RXTX(data) do { SPI_TX(data); (void)SPI_RX; } while (0)
 
-#define MAX31856_PROBE_PATTERN  0x15U  // scratch value for the probe readback
+/** Scratch value written to MASK during the probe readback test. */
+#define MAX31856_PROBE_PATTERN  0x15U
 
+/*==============================================================================
+ *                               DATA TYPES
+ *============================================================================*/
+
+/* No private data types. */
+
+/*==============================================================================
+ *                                VARIABLES
+ *============================================================================*/
+
+/* No file-scope variables: the driver keeps no state. */
+
+/*==============================================================================
+ *                                FUNCTIONS
+ *============================================================================*/
+
+/**
+ * @brief   Clamp a signed value into a range.
+ * @param[in] value Input value.
+ * @param[in] low   Lower bound.
+ * @param[in] high  Upper bound.
+ * @return  value limited to [low, high].
+ */
 static int32_t clamp_i32(int32_t value, int32_t low, int32_t high) {
     int32_t result = value;
 
@@ -28,7 +67,7 @@ void MAX31856_write_reg(uint8_t addr, uint8_t value) {
 }
 
 uint8_t MAX31856_read_reg(uint8_t addr) {
-    uint8_t value;
+    uint8_t value = 0U;
 
     MAX31856_CS_LOW;
 
@@ -53,8 +92,21 @@ void MAX31856_read_buf(uint8_t addr, uint8_t* buf, uint32_t len) {
     MAX31856_CS_HIGH;
 }
 
+MAX31856_Status MAX31856_probe(void) {
+    MAX31856_Status st = MAX31856_ERR;
+    uint8_t saved = MAX31856_read_reg(MAX31856_REG_MASK);
+
+    MAX31856_write_reg(MAX31856_REG_MASK, MAX31856_PROBE_PATTERN);
+    if (MAX31856_read_reg(MAX31856_REG_MASK) == MAX31856_PROBE_PATTERN) {
+        st = MAX31856_OK;
+    }
+    MAX31856_write_reg(MAX31856_REG_MASK, saved);
+
+    return st;
+}
+
 void MAX31856_init(uint8_t tc_type, uint8_t avg) {
-    uint8_t cr1;
+    uint8_t cr1 = 0U;
 
     /* CR0: automatic conversion, open-circuit detection on, 60 Hz rejection */
     MAX31856_write_reg(MAX31856_REG_CR0,
@@ -69,22 +121,9 @@ void MAX31856_init(uint8_t tc_type, uint8_t avg) {
     MAX31856_write_reg(MAX31856_REG_MASK, 0x00U);
 }
 
-MAX31856_Status MAX31856_probe(void) {
-    MAX31856_Status st = MAX31856_ERR;
-    uint8_t saved = MAX31856_read_reg(MAX31856_REG_MASK);
-
-    MAX31856_write_reg(MAX31856_REG_MASK, MAX31856_PROBE_PATTERN);
-    if (MAX31856_read_reg(MAX31856_REG_MASK) == MAX31856_PROBE_PATTERN) {
-        st = MAX31856_OK;
-    }
-    MAX31856_write_reg(MAX31856_REG_MASK, saved);
-
-    return st;
-}
-
 void MAX31856_set_filter(uint8_t use_50hz) {
     uint8_t cr0 = MAX31856_read_reg(MAX31856_REG_CR0);
-    uint8_t cmode = cr0 & MAX31856_CR0_CMODE;
+    uint8_t cmode = (uint8_t)(cr0 & MAX31856_CR0_CMODE);
 
     /* The datasheet requires conversions to be stopped while the 50/60 Hz
        filter is changed, so automatic mode is suspended and restored. */
@@ -127,8 +166,8 @@ void MAX31856_set_cj_offset(float offset_c) {
 void MAX31856_oneshot(void) {
     uint8_t cr0 = MAX31856_read_reg(MAX31856_REG_CR0);
 
-    cr0 &= (uint8_t)(~MAX31856_CR0_CMODE);  // leave automatic mode
-    cr0 |= MAX31856_CR0_1SHOT;              // trigger a single conversion
+    cr0 &= (uint8_t)(~MAX31856_CR0_CMODE);  /* leave automatic mode */
+    cr0 |= MAX31856_CR0_1SHOT;              /* trigger a single conversion */
 
     MAX31856_write_reg(MAX31856_REG_CR0, cr0);
 }
@@ -143,7 +182,7 @@ uint8_t MAX31856_conversion_done(void) {
 void MAX31856_clear_fault(void) {
     uint8_t cr0 = MAX31856_read_reg(MAX31856_REG_CR0);
 
-    cr0 |= MAX31856_CR0_FAULTCLR;  // self-clearing fault status reset
+    cr0 |= MAX31856_CR0_FAULTCLR;  /* self-clearing fault status reset */
 
     MAX31856_write_reg(MAX31856_REG_CR0, cr0);
 }
@@ -153,36 +192,36 @@ uint8_t MAX31856_read_fault(void) {
 }
 
 int32_t MAX31856_read_temp_raw(void) {
-    uint8_t buf[3];
-    uint32_t value;
-    int32_t raw;
+    uint8_t buf[3] = {0U, 0U, 0U};
+    uint32_t value = 0U;
+    int32_t raw = 0;
 
     MAX31856_read_buf(MAX31856_REG_LTCBH, buf, 3U);
 
     value = ((uint32_t)buf[0] << 16) | ((uint32_t)buf[1] << 8) | (uint32_t)buf[2];
-    value >>= 5;  // 19-bit linearized temperature, drop the 5 unused LSBs
+    value >>= 5;  /* 19-bit linearized temperature, drop the 5 unused LSBs */
 
     raw = (int32_t)value;
     if ((value & 0x40000U) != 0U) {
-        raw -= 0x80000;  // sign-extend the 19-bit two's complement value
+        raw -= 0x80000;  /* sign-extend the 19-bit two's complement value */
     }
 
     return raw;
 }
 
 int32_t MAX31856_read_cj_temp_raw(void) {
-    uint8_t buf[2];
-    uint16_t value;
-    int32_t raw;
+    uint8_t buf[2] = {0U, 0U};
+    uint16_t value = 0U;
+    int32_t raw = 0;
 
     MAX31856_read_buf(MAX31856_REG_CJTH, buf, 2U);
 
     value = (uint16_t)(((uint16_t)buf[0] << 8) | (uint16_t)buf[1]);
-    value >>= 2;  // 14-bit cold-junction temperature, drop the 2 unused LSBs
+    value >>= 2;  /* 14-bit cold-junction temperature, drop the 2 unused LSBs */
 
     raw = (int32_t)value;
     if ((value & 0x2000U) != 0U) {
-        raw -= 0x4000;  // sign-extend the 14-bit two's complement value
+        raw -= 0x4000;  /* sign-extend the 14-bit two's complement value */
     }
 
     return raw;

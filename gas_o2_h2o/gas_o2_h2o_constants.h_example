@@ -1,42 +1,58 @@
+/**
+ * @file    gas_o2_h2o_constants.h
+ * @brief   Individual graduation data of the O2-H2O gas analyzer.
+ * @details Copy this template to gas_o2_h2o_constants.h. Part of these
+ *          values is entered manually according to the results of the
+ *          individual calibration of each unit.
+ */
+
 #ifndef GAS_O2_H2O_CONSTANTS_H
 #define GAS_O2_H2O_CONSTANTS_H
 
-// Individual graduation data. Part of these values is entered manually
-// according to the results of the individual calibration of each unit.
+/*==============================================================================
+ *                              INCLUDED FILES
+ *============================================================================*/
 
-// --- O2 solid-electrolyte cell ---------------------------------------------
-// Cx[%] = GAS_O2_C_REF * exp(-k(T) * (Ex - Et)),  k(T) = 4F/(R*T)
-// The zirconia cell runs hot, so the Nernst slope k depends on the actual
-// cell temperature T, which is measured by the thermocouple (MAX31856).
-// k is scaled from its nominal value: k(T) = GAS_O2_NERNST_K * GAS_O2_T_NOM / T.
-#define GAS_O2_C_REF      20.7f       // reference O2 volume fraction, %
-#define GAS_O2_NERNST_K   51.17975f   // nominal 4F/(R*T) at T = GAS_O2_T_NOM, 1/V
-#define GAS_O2_T_NOM      907.15f     // nominal cell temperature, K (634 degC)
-#define GAS_O2_ET         0.0f        // thermo-EMF Et correction, V (from calibration)
+/* Pure data header: nothing to include. */
 
-// --- H2O coulometric sensor ------------------------------------------------
-// C_H2O[ppmV] = GAS_H2O_K * (Ux - Uf) / Q
-#define GAS_H2O_K         747.928f    // ppmV * (cm^3/min) / V
-#define GAS_H2O_UF        0.0f        // background-current voltage Uf, V (from calibration)
-#define GAS_H2O_RESISTOR  100.0f      // sense resistor across which Ux is measured, Ohm
+/*==============================================================================
+ *                            MACRO DEFINITIONS
+ *============================================================================*/
 
-// --- Flow rate Q = a + b*x + c*x^2 (x - flow-meter output signal) -----------
-#define GAS_FLOW_O2_A     0.415392f
-#define GAS_FLOW_O2_B     13766.5f
-#define GAS_FLOW_O2_C     35416.67f
+/* --- O2 solid-electrolyte cell ---------------------------------------------
+   Cx[%] = GAS_O2_C_REF * exp(-k(T) * (Ex - Et)),  k(T) = 4F/(R*T).
+   The zirconia cell runs hot, so the Nernst slope k depends on the actual
+   cell temperature T, measured by the thermocouple (max31856 driver);
+   k is scaled from its nominal value: k(T) = GAS_O2_NERNST_K * GAS_O2_T_NOM / T. */
+#define GAS_O2_C_REF      20.7f       /**< Reference O2 volume fraction, %     */
+#define GAS_O2_NERNST_K   51.17975f   /**< Nominal 4F/(R*T) at GAS_O2_T_NOM, 1/V */
+#define GAS_O2_T_NOM      907.15f     /**< Nominal cell temperature, K (634 degC) */
+#define GAS_O2_ET         0.0f        /**< Thermo-EMF Et correction, V (calibration) */
 
-#define GAS_FLOW_H2O_A    0.9615185f
-#define GAS_FLOW_H2O_B    12611.44f
-#define GAS_FLOW_H2O_C    37579.19f
+/* --- H2O coulometric sensor -------------------------------------------------
+   C_H2O[ppmV] = GAS_H2O_K * (Ux - Uf) / Q. */
+#define GAS_H2O_K         747.928f    /**< ppmV * (cm^3/min) / V               */
+#define GAS_H2O_UF        0.0f        /**< Background-current voltage Uf, V (calibration) */
+#define GAS_H2O_RESISTOR  100.0f      /**< Sense resistor carrying Ux, Ohm     */
 
-// --- Validity limits for the *_checked functions ----------------------------
-// Tune per unit. Out-of-range inputs make exp()/division produce plausible
-// looking garbage, so checked variants reject them instead.
-#define GAS_O2_EX_MIN     (-0.2f)     // valid cell EMF range, V
-#define GAS_O2_EX_MAX     0.5f
-#define GAS_O2_T_MIN      773.15f     // cell working temperature range, K (500 degC)
-#define GAS_O2_T_MAX      1073.15f    // (800 degC)
-#define GAS_H2O_UX_MAX    10.0f       // max plausible sense voltage, V
-#define GAS_FLOW_Q_MIN    0.001f      // min plausible flow, cm^3/min
+/* --- Flow rate Q = a + b*x + c*x^2 (x - flow-meter output signal) -----------
+   Coefficients are produced by the individual calibration of each channel. */
+#define GAS_FLOW_O2_A     0.415392f   /**< O2 channel, constant coefficient    */
+#define GAS_FLOW_O2_B     13766.5f    /**< O2 channel, linear coefficient      */
+#define GAS_FLOW_O2_C     35416.67f   /**< O2 channel, quadratic coefficient   */
 
-#endif
+#define GAS_FLOW_H2O_A    0.9615185f  /**< H2O channel, constant coefficient   */
+#define GAS_FLOW_H2O_B    12611.44f   /**< H2O channel, linear coefficient     */
+#define GAS_FLOW_H2O_C    37579.19f   /**< H2O channel, quadratic coefficient  */
+
+/* --- Validity limits for the *_checked functions ----------------------------
+   Tune per unit. Out-of-range inputs make exp()/division produce plausible
+   looking garbage, so the checked variants reject them instead. */
+#define GAS_O2_EX_MIN     (-0.2f)     /**< Minimum valid cell EMF (Ex-Et), V   */
+#define GAS_O2_EX_MAX     0.5f        /**< Maximum valid cell EMF (Ex-Et), V   */
+#define GAS_O2_T_MIN      773.15f     /**< Minimum working cell temperature, K (500 degC) */
+#define GAS_O2_T_MAX      1073.15f    /**< Maximum working cell temperature, K (800 degC) */
+#define GAS_H2O_UX_MAX    10.0f       /**< Maximum plausible sense voltage, V  */
+#define GAS_FLOW_Q_MIN    0.001f      /**< Minimum plausible flow, cm^3/min    */
+
+#endif /* GAS_O2_H2O_CONSTANTS_H */

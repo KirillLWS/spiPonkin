@@ -1,41 +1,87 @@
+/**
+ * @file    aht20_bmp280.c
+ * @brief   AHT20 + BMP280 combined sensor driver implementation.
+ * @details See aht20_bmp280.h for the public API description.
+ */
+
+/*==============================================================================
+ *                              INCLUDED FILES
+ *============================================================================*/
+
 #include "aht20_bmp280.h"
 
 #include "stddef.h"
 
-/* ===================== BMP280 calibration storage ===================== */
+/*==============================================================================
+ *                            MACRO DEFINITIONS
+ *============================================================================*/
 
+#define AHT20_RAW_FULL_SCALE  1048576.0f  /**< 2^20, full scale of the raw values */
+#define BMP280_ADC_SKIPPED    0x80000     /**< Raw code of a skipped measurement  */
+
+/*==============================================================================
+ *                               DATA TYPES
+ *============================================================================*/
+
+/**
+ * @brief BMP280 factory calibration coefficients and shared state.
+ */
 typedef struct {
-    uint16_t t1;
-    int16_t  t2;
-    int16_t  t3;
-    uint16_t p1;
-    int16_t  p2;
-    int16_t  p3;
-    int16_t  p4;
-    int16_t  p5;
-    int16_t  p6;
-    int16_t  p7;
-    int16_t  p8;
-    int16_t  p9;
-    int32_t  t_fine;
+    uint16_t t1;      /**< dig_T1 temperature coefficient                     */
+    int16_t  t2;      /**< dig_T2 temperature coefficient                     */
+    int16_t  t3;      /**< dig_T3 temperature coefficient                     */
+    uint16_t p1;      /**< dig_P1 pressure coefficient                        */
+    int16_t  p2;      /**< dig_P2 pressure coefficient                        */
+    int16_t  p3;      /**< dig_P3 pressure coefficient                        */
+    int16_t  p4;      /**< dig_P4 pressure coefficient                        */
+    int16_t  p5;      /**< dig_P5 pressure coefficient                        */
+    int16_t  p6;      /**< dig_P6 pressure coefficient                        */
+    int16_t  p7;      /**< dig_P7 pressure coefficient                        */
+    int16_t  p8;      /**< dig_P8 pressure coefficient                        */
+    int16_t  p9;      /**< dig_P9 pressure coefficient                        */
+    int32_t  t_fine;  /**< Fine temperature, produced by the temperature
+                           compensation and consumed by the pressure one      */
 } bmp280_calib_t;
 
-static bmp280_calib_t bmp;
+/*==============================================================================
+ *                                VARIABLES
+ *============================================================================*/
 
+/** BMP280 calibration data, filled by BMP280_init(). */
+static bmp280_calib_t bmp = {0U, 0, 0, 0U, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+/*==============================================================================
+ *                                FUNCTIONS
+ *============================================================================*/
+
+/**
+ * @brief   Assemble a little-endian uint16 from two bytes.
+ * @param[in] p Pointer to the low byte.
+ * @return  Unsigned 16-bit value.
+ */
 static uint16_t u16_le(const uint8_t* p) {
     return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
 }
 
+/**
+ * @brief   Assemble a little-endian int16 from two bytes.
+ * @param[in] p Pointer to the low byte.
+ * @return  Signed 16-bit value.
+ */
 static int16_t s16_le(const uint8_t* p) {
     return (int16_t)u16_le(p);
 }
 
-/* ===================== AHT20 ===================== */
-
+/**
+ * @brief   CRC-8 of an AHT20 frame (polynomial 0x31, init 0xFF).
+ * @param[in] data Frame bytes.
+ * @param[in] len  Number of bytes covered.
+ * @return  CRC value.
+ */
 static uint8_t aht20_crc8(const uint8_t* data, uint32_t len) {
     uint8_t crc = 0xFFU;
-    uint32_t i;
-    uint8_t bit;
+    uint32_t i = 0U;
+    uint8_t bit = 0U;
 
     for (i = 0U; i < len; i++) {
         crc ^= data[i];
@@ -51,128 +97,44 @@ static uint8_t aht20_crc8(const uint8_t* data, uint32_t len) {
     return crc;
 }
 
-I2C_Status AHT20_init(void) {
-    I2C_Status st;
-    uint8_t status = 0U;
-    uint8_t cmd[3];
-
-    AHT_BMP_DELAY_MS(40U);  // power-up time
-
-    st = I2C_Read(AHT_BMP_I2C, AHT20_ADDR, &status, 1U);
-
-    if ((st == I2C_OK) && ((status & AHT20_STATUS_CAL) == 0U)) {
-        cmd[0] = AHT20_CMD_INIT;
-        cmd[1] = 0x08U;
-        cmd[2] = 0x00U;
-        st = I2C_Write(AHT_BMP_I2C, AHT20_ADDR, cmd, 3U);
-        AHT_BMP_DELAY_MS(10U);
-    }
-
-    return st;
-}
-
-I2C_Status AHT20_soft_reset(void) {
-    uint8_t cmd = AHT20_CMD_RESET;
-    I2C_Status st;
-
-    st = I2C_Write(AHT_BMP_I2C, AHT20_ADDR, &cmd, 1U);
-    AHT_BMP_DELAY_MS(20U);  // datasheet: reset completes within 20 ms
-
-    return st;
-}
-
-I2C_Status AHT20_trigger(void) {
-    uint8_t cmd[3];
-
-    cmd[0] = AHT20_CMD_MEASURE;
-    cmd[1] = 0x33U;
-    cmd[2] = 0x00U;
-
-    return I2C_Write(AHT_BMP_I2C, AHT20_ADDR, cmd, 3U);
-}
-
-I2C_Status AHT20_busy(uint8_t* busy) {
-    I2C_Status st;
-    uint8_t status = 0U;
-
-    st = I2C_Read(AHT_BMP_I2C, AHT20_ADDR, &status, 1U);
-
-    if ((st == I2C_OK) && (busy != NULL)) {
-        *busy = ((status & AHT20_STATUS_BUSY) != 0U) ? 1U : 0U;
-    }
-
-    return st;
-}
-
-I2C_Status AHT20_fetch(float* temperature, float* humidity) {
-    I2C_Status st;
-    uint8_t data[7];
-    uint32_t raw;
-
-    st = I2C_Read(AHT_BMP_I2C, AHT20_ADDR, data, 7U);
-
-    if (st == I2C_OK) {
-        if ((data[0] & AHT20_STATUS_BUSY) != 0U) {
-            st = I2C_ERR_TIMEOUT;  // conversion still running, retry later
-        } else if (aht20_crc8(data, 6U) != data[6]) {
-            st = I2C_ERR_DATA;     // corrupted frame
-        } else {
-            if (humidity != NULL) {
-                raw = ((uint32_t)data[1] << 12) |
-                      ((uint32_t)data[2] << 4) |
-                      ((uint32_t)data[3] >> 4);
-                *humidity = ((float)raw * 100.0f) / 1048576.0f;
-            }
-            if (temperature != NULL) {
-                raw = (((uint32_t)data[3] & 0x0FU) << 16) |
-                      ((uint32_t)data[4] << 8) |
-                      (uint32_t)data[5];
-                *temperature = (((float)raw * 200.0f) / 1048576.0f) - 50.0f;
-            }
-        }
-    }
-
-    return st;
-}
-
-I2C_Status AHT20_read(float* temperature, float* humidity) {
-    I2C_Status st;
-    uint32_t retry;
-
-    st = AHT20_trigger();
-
-    if (st == I2C_OK) {
-        AHT_BMP_DELAY_MS(80U);  // typical measurement time
-        st = AHT20_fetch(temperature, humidity);
-
-        /* If the chip is still converting, give it a little more time. */
-        for (retry = 0U; (retry < 3U) && (st == I2C_ERR_TIMEOUT); retry++) {
-            AHT_BMP_DELAY_MS(10U);
-            st = AHT20_fetch(temperature, humidity);
-        }
-    }
-
-    return st;
-}
-
-/* ===================== BMP280 ===================== */
-
+/**
+ * @brief   Read consecutive BMP280 registers.
+ * @param[in]  reg Start register address.
+ * @param[out] buf Destination buffer, at least len bytes.
+ * @param[in]  len Number of registers to read.
+ * @return  Transport status.
+ */
 static I2C_Status bmp280_read_reg(uint8_t reg, uint8_t* buf, uint32_t len) {
     uint8_t r = reg;
+
     return I2C_WriteRead(AHT_BMP_I2C, BMP280_ADDR, &r, 1U, buf, len);
 }
 
+/**
+ * @brief   Write one BMP280 register.
+ * @param[in] reg   Register address.
+ * @param[in] value Byte to write.
+ * @return  Transport status.
+ */
 static I2C_Status bmp280_write_reg(uint8_t reg, uint8_t value) {
-    uint8_t cmd[2];
+    uint8_t cmd[2] = {0U, 0U};
+
     cmd[0] = reg;
     cmd[1] = value;
+
     return I2C_Write(AHT_BMP_I2C, BMP280_ADDR, cmd, 2U);
 }
 
-/* Datasheet compensation: temperature in 0.01 degC, also updates t_fine. */
+/**
+ * @brief   Datasheet temperature compensation.
+ * @details Integer formula from the BMP280 datasheet; also updates
+ *          bmp.t_fine, which the pressure compensation depends on.
+ * @param[in] adc_t Raw 20-bit temperature code.
+ * @return  Temperature in 0.01 degC units.
+ */
 static int32_t bmp280_compensate_t(int32_t adc_t) {
-    int32_t var1;
-    int32_t var2;
+    int32_t var1 = 0;
+    int32_t var2 = 0;
 
     var1 = ((((adc_t >> 3) - ((int32_t)bmp.t1 << 1))) * ((int32_t)bmp.t2)) >> 11;
     var2 = (((((adc_t >> 4) - ((int32_t)bmp.t1)) *
@@ -182,11 +144,18 @@ static int32_t bmp280_compensate_t(int32_t adc_t) {
     return (bmp.t_fine * 5 + 128) >> 8;
 }
 
-/* Datasheet compensation: pressure in Q24.8 Pa (value / 256 = Pa). */
+/**
+ * @brief   Datasheet pressure compensation.
+ * @details 64-bit integer formula from the BMP280 datasheet. Requires
+ *          bmp.t_fine from a preceding bmp280_compensate_t() call.
+ * @param[in] adc_p Raw 20-bit pressure code.
+ * @return  Pressure in Q24.8 fixed point (value / 256 = Pa); 0 when the
+ *          formula would divide by zero.
+ */
 static uint32_t bmp280_compensate_p(int32_t adc_p) {
-    int64_t var1;
-    int64_t var2;
-    int64_t p;
+    int64_t var1 = 0;
+    int64_t var2 = 0;
+    int64_t p = 0;
     uint32_t result = 0U;
 
     var1 = ((int64_t)bmp.t_fine) - 128000;
@@ -209,15 +178,119 @@ static uint32_t bmp280_compensate_p(int32_t adc_p) {
     return result;
 }
 
+I2C_Status AHT20_init(void) {
+    I2C_Status st = I2C_OK;
+    uint8_t status = 0U;
+    uint8_t cmd[3] = {0U, 0U, 0U};
+
+    AHT_BMP_DELAY_MS(40U);  /* power-up time */
+
+    st = I2C_Read(AHT_BMP_I2C, AHT20_ADDR, &status, 1U);
+
+    if ((st == I2C_OK) && ((status & AHT20_STATUS_CAL) == 0U)) {
+        cmd[0] = AHT20_CMD_INIT;
+        cmd[1] = 0x08U;
+        cmd[2] = 0x00U;
+        st = I2C_Write(AHT_BMP_I2C, AHT20_ADDR, cmd, 3U);
+        AHT_BMP_DELAY_MS(10U);
+    }
+
+    return st;
+}
+
+I2C_Status AHT20_soft_reset(void) {
+    uint8_t cmd = AHT20_CMD_RESET;
+    I2C_Status st = I2C_OK;
+
+    st = I2C_Write(AHT_BMP_I2C, AHT20_ADDR, &cmd, 1U);
+    AHT_BMP_DELAY_MS(20U);  /* datasheet: reset completes within 20 ms */
+
+    return st;
+}
+
+I2C_Status AHT20_trigger(void) {
+    uint8_t cmd[3] = {0U, 0U, 0U};
+
+    cmd[0] = AHT20_CMD_MEASURE;
+    cmd[1] = 0x33U;
+    cmd[2] = 0x00U;
+
+    return I2C_Write(AHT_BMP_I2C, AHT20_ADDR, cmd, 3U);
+}
+
+I2C_Status AHT20_busy(uint8_t* busy) {
+    I2C_Status st = I2C_OK;
+    uint8_t status = 0U;
+
+    st = I2C_Read(AHT_BMP_I2C, AHT20_ADDR, &status, 1U);
+
+    if ((st == I2C_OK) && (busy != NULL)) {
+        *busy = ((status & AHT20_STATUS_BUSY) != 0U) ? 1U : 0U;
+    }
+
+    return st;
+}
+
+I2C_Status AHT20_fetch(float* temperature, float* humidity) {
+    I2C_Status st = I2C_OK;
+    uint8_t data[7] = {0U, 0U, 0U, 0U, 0U, 0U, 0U};
+    uint32_t raw = 0U;
+
+    st = I2C_Read(AHT_BMP_I2C, AHT20_ADDR, data, 7U);
+
+    if (st == I2C_OK) {
+        if ((data[0] & AHT20_STATUS_BUSY) != 0U) {
+            st = I2C_ERR_TIMEOUT;  /* conversion still running, retry later */
+        } else if (aht20_crc8(data, 6U) != data[6]) {
+            st = I2C_ERR_DATA;     /* corrupted frame */
+        } else {
+            if (humidity != NULL) {
+                raw = ((uint32_t)data[1] << 12) |
+                      ((uint32_t)data[2] << 4) |
+                      ((uint32_t)data[3] >> 4);
+                *humidity = ((float)raw * 100.0f) / AHT20_RAW_FULL_SCALE;
+            }
+            if (temperature != NULL) {
+                raw = (((uint32_t)data[3] & 0x0FU) << 16) |
+                      ((uint32_t)data[4] << 8) |
+                      (uint32_t)data[5];
+                *temperature = (((float)raw * 200.0f) / AHT20_RAW_FULL_SCALE) - 50.0f;
+            }
+        }
+    }
+
+    return st;
+}
+
+I2C_Status AHT20_read(float* temperature, float* humidity) {
+    I2C_Status st = I2C_OK;
+    uint32_t retry = 0U;
+
+    st = AHT20_trigger();
+
+    if (st == I2C_OK) {
+        AHT_BMP_DELAY_MS(80U);  /* typical measurement time */
+        st = AHT20_fetch(temperature, humidity);
+
+        /* If the chip is still converting, give it a little more time. */
+        for (retry = 0U; (retry < 3U) && (st == I2C_ERR_TIMEOUT); retry++) {
+            AHT_BMP_DELAY_MS(10U);
+            st = AHT20_fetch(temperature, humidity);
+        }
+    }
+
+    return st;
+}
+
 I2C_Status BMP280_init(void) {
-    I2C_Status st;
+    I2C_Status st = I2C_OK;
     uint8_t id = 0U;
-    uint8_t calib[24];
+    uint8_t calib[24] = {0U};
 
     st = bmp280_read_reg(BMP280_REG_ID, &id, 1U);
 
     if ((st == I2C_OK) && (id != BMP280_CHIP_ID)) {
-        st = I2C_ERR_NACK;  // wrong or missing device
+        st = I2C_ERR_NACK;  /* wrong or missing device */
     }
 
     if (st == I2C_OK) {
@@ -256,10 +329,12 @@ I2C_Status BMP280_init(void) {
 }
 
 I2C_Status BMP280_read(float* temperature, float* pressure) {
-    I2C_Status st;
-    uint8_t data[6];
-    int32_t adc_t;
-    int32_t adc_p;
+    I2C_Status st = I2C_OK;
+    uint8_t data[6] = {0U, 0U, 0U, 0U, 0U, 0U};
+    int32_t adc_t = 0;
+    int32_t adc_p = 0;
+    int32_t t = 0;
+    uint32_t p = 0U;
 
     st = bmp280_read_reg(BMP280_REG_DATA, data, 6U);
 
@@ -273,23 +348,21 @@ I2C_Status BMP280_read(float* temperature, float* pressure) {
 
         /* 0x80000 marks a skipped measurement (channel off / not started) -
            without this check it compensates into plausible-looking garbage. */
-        if ((adc_t == 0x80000) || (adc_p == 0x80000)) {
+        if ((adc_t == BMP280_ADC_SKIPPED) || (adc_p == BMP280_ADC_SKIPPED)) {
             st = I2C_ERR_DATA;
         }
     }
 
     if (st == I2C_OK) {
         /* temperature must be compensated first: it sets t_fine for pressure */
-        {
-            int32_t t = bmp280_compensate_t(adc_t);
-            uint32_t p = bmp280_compensate_p(adc_p);
+        t = bmp280_compensate_t(adc_t);
+        p = bmp280_compensate_p(adc_p);
 
-            if (temperature != NULL) {
-                *temperature = (float)t / 100.0f;
-            }
-            if (pressure != NULL) {
-                *pressure = (float)p / 256.0f;
-            }
+        if (temperature != NULL) {
+            *temperature = (float)t / 100.0f;
+        }
+        if (pressure != NULL) {
+            *pressure = (float)p / 256.0f;
         }
     }
 
