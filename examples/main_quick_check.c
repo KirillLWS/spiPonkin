@@ -2,7 +2,8 @@
  * @file    main_quick_check.c
  * @brief   Quick bring-up main for the AHT20+BMP280 combo on NUCLEO-H755ZI-Q.
  * @details Drop-in replacement of Src/main.c for the test_CM7 project.
- *          Requires Inc/aht20_bmp280_constants.h (copy of the .h_example).
+ *          Requires Inc/aht20_bmp280_constants.h (copy of the .h_example
+ *          with AHT_BMP_I2C set to I2C4).
  *          Watch aht_t / aht_h / bmp_t / bmp_p and the statuses in Live
  *          Expressions; LD1 (green, PB0) blinks as a heartbeat.
  */
@@ -26,9 +27,9 @@
  *                            MACRO DEFINITIONS
  *============================================================================*/
 
-/** I2C1 TIMINGR for 100 kHz at a 100 MHz kernel clock (APB1 of the
+/** I2C4 TIMINGR for 100 kHz at a 100 MHz kernel clock (APB4 of the
  *  400 MHz project clock tree). Recalculate if the tree changes. */
-#define I2C1_TIMINGR_100KHZ  0x90422731U
+#define I2C_TIMINGR_100KHZ  0x90422731U
 
 /*==============================================================================
  *                                VARIABLES
@@ -47,19 +48,20 @@ static volatile uint32_t cycle = 0U;           /**< Loop counter (liveness)   */
  *============================================================================*/
 
 /**
- * @brief   Configure I2C1 on PB8 (SCL, D15) / PB9 (SDA, D14).
+ * @brief   Configure I2C4 on PF14 (SCL, D69) / PF15 (SDA, D68).
+ * @details Zio label I2C_B; the silicon function on PF14/PF15 is I2C4 (AF4).
  * @return  None.
  */
-static void I2C1_Setup(void) {
-    GPIO_Config(GPIOB, LL_GPIO_PIN_8 | LL_GPIO_PIN_9,
+static void I2C4_Setup(void) {
+    GPIO_Config(GPIOF, LL_GPIO_PIN_14 | LL_GPIO_PIN_15,
                 LL_GPIO_MODE_ALTERNATE, LL_GPIO_OUTPUT_OPENDRAIN,
                 LL_GPIO_PULL_UP, LL_GPIO_SPEED_FREQ_VERY_HIGH, LL_GPIO_AF_4);
 
-    LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_I2C1);
+    LL_APB4_GRP1_EnableClock(LL_APB4_GRP1_PERIPH_I2C4);
 
-    LL_I2C_Disable(I2C1);
-    LL_I2C_SetTiming(I2C1, I2C1_TIMINGR_100KHZ);
-    LL_I2C_Enable(I2C1);
+    LL_I2C_Disable(I2C4);
+    LL_I2C_SetTiming(I2C4, I2C_TIMINGR_100KHZ);
+    LL_I2C_Enable(I2C4);
 }
 
 /**
@@ -79,7 +81,7 @@ int main(void) {
     LL_Init1msTick(SystemCoreClock);  /* 1 ms SysTick for LL_mDelay */
 
     GPIO_ConfigOutput(GPIOB, LL_GPIO_PIN_0);  /* LD1 heartbeat */
-    I2C1_Setup();
+    I2C4_Setup();
 
     aht_st = AHT20_init();   /* I2C_OK expected; NACK = wiring          */
     bmp_st = BMP280_init();  /* I2C_OK expected; NACK = wiring or 0x77  */
