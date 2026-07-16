@@ -142,7 +142,7 @@ I2C_Status I2C_Write(I2C_TypeDef* i2c, uint8_t addr, const uint8_t* data, uint32
     uint32_t i = 0U;
 
     LL_I2C_HandleTransfer(i2c, (uint32_t)addr << 1, LL_I2C_ADDRSLAVE_7BIT, len,
-                          LL_I2C_MODE_AUTOEND, LL_I2C_GENERATION_START_WRITE);
+                          LL_I2C_MODE_AUTOEND, LL_I2C_GENERATE_START_WRITE);
 
     for (i = 0U; (i < len) && (st == I2C_OK); i++) {
         st = i2c_wait_txis(i2c);
@@ -164,7 +164,7 @@ I2C_Status I2C_Read(I2C_TypeDef* i2c, uint8_t addr, uint8_t* data, uint32_t len)
     uint32_t i = 0U;
 
     LL_I2C_HandleTransfer(i2c, (uint32_t)addr << 1, LL_I2C_ADDRSLAVE_7BIT, len,
-                          LL_I2C_MODE_AUTOEND, LL_I2C_GENERATION_START_READ);
+                          LL_I2C_MODE_AUTOEND, LL_I2C_GENERATE_START_READ);
 
     for (i = 0U; (i < len) && (st == I2C_OK); i++) {
         st = i2c_wait_rxne(i2c);
@@ -189,7 +189,7 @@ I2C_Status I2C_WriteRead(I2C_TypeDef* i2c, uint8_t addr,
 
     /* Phase 1: write with SOFTEND so no STOP is generated, then repeated start. */
     LL_I2C_HandleTransfer(i2c, (uint32_t)addr << 1, LL_I2C_ADDRSLAVE_7BIT, wlen,
-                          LL_I2C_MODE_SOFTEND, LL_I2C_GENERATION_START_WRITE);
+                          LL_I2C_MODE_SOFTEND, LL_I2C_GENERATE_START_WRITE);
 
     for (i = 0U; (i < wlen) && (st == I2C_OK); i++) {
         st = i2c_wait_txis(i2c);
@@ -205,7 +205,7 @@ I2C_Status I2C_WriteRead(I2C_TypeDef* i2c, uint8_t addr,
     /* Phase 2: repeated-start read with AUTOEND. */
     if (st == I2C_OK) {
         LL_I2C_HandleTransfer(i2c, (uint32_t)addr << 1, LL_I2C_ADDRSLAVE_7BIT, rlen,
-                              LL_I2C_MODE_AUTOEND, LL_I2C_GENERATION_START_READ);
+                              LL_I2C_MODE_AUTOEND, LL_I2C_GENERATE_START_READ);
 
         for (i = 0U; (i < rlen) && (st == I2C_OK); i++) {
             st = i2c_wait_rxne(i2c);
